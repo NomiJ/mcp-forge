@@ -1,8 +1,13 @@
 'use client';
 
 import { Dispatch, useState } from 'react';
+import { Light as SyntaxHighlighter } from 'react-syntax-highlighter';
+import python from 'react-syntax-highlighter/dist/esm/languages/hljs/python';
+import { atomOneDark } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import { ToolCard, SpecMetadata } from '@/types';
 import { AppAction } from '@/state/reducer';
+
+SyntaxHighlighter.registerLanguage('python', python);
 
 interface Props {
   toolCards: ToolCard[];
@@ -99,9 +104,23 @@ export default function DownloadBar({ toolCards, metadata, dispatch }: Props) {
               </button>
             </div>
             {/* Code */}
-            <pre className="overflow-auto flex-1 p-5 text-xs text-gray-300 font-mono leading-relaxed whitespace-pre">
-              {previewSource}
-            </pre>
+            <div className="overflow-auto flex-1">
+              <SyntaxHighlighter
+                language="python"
+                style={atomOneDark}
+                showLineNumbers
+                customStyle={{
+                  margin: 0,
+                  padding: '1.25rem',
+                  background: 'transparent',
+                  fontSize: '0.75rem',
+                  lineHeight: '1.6',
+                }}
+                lineNumberStyle={{ color: '#4b5563', minWidth: '2.5rem' }}
+              >
+                {previewSource}
+              </SyntaxHighlighter>
+            </div>
           </div>
         </div>
       )}

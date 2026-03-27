@@ -10,12 +10,10 @@ interface Props {
   dispatch: Dispatch<AppAction>;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-
-const qualityConfig: Record<QualityScore, { label: string; dot: string; ring: string }> = {
-  green:  { label: 'Good',    dot: 'bg-green-400',  ring: 'ring-green-500/20' },
-  yellow: { label: 'Fair',    dot: 'bg-yellow-400', ring: 'ring-yellow-500/20' },
-  red:    { label: 'Improve', dot: 'bg-red-400',    ring: 'ring-red-500/20' },
+const qualityConfig: Record<QualityScore, { dot: string }> = {
+  green:  { dot: 'bg-green-400' },
+  yellow: { dot: 'bg-yellow-400' },
+  red:    { dot: 'bg-red-400' },
 };
 
 const methodStyle: Record<string, string> = {
@@ -26,40 +24,9 @@ const methodStyle: Record<string, string> = {
   DELETE: 'bg-red-500/15 text-red-400 ring-1 ring-red-500/30',
 };
 
-export default function ToolCard({ card, sessionToken, dispatch }: Props) {
-  const [rewriting, setRewriting] = useState(false);
-  const [rewriteError, setRewriteError] = useState('');
+export default function ToolCard({ card, dispatch }: Omit<Props, 'sessionToken'> & { sessionToken?: string | null }) {
   const [showPreview, setShowPreview] = useState(false);
   const quality = qualityConfig[card.qualityScore];
-
-  async function handleRewrite() {
-    setRewriteError('');
-    setRewriting(true);
-    try {
-      const res = await fetch(`${API_URL}/api/v1/rewrite`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionToken,
-          toolCardId: card.id,
-          currentToolName: card.toolName,
-          currentDescription: card.description,
-          method: card.method,
-          path: card.path,
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail ?? 'Rewrite failed.');
-      }
-      const data = await res.json();
-      dispatch({ type: 'REWRITE_SUCCESS', id: card.id, toolName: data.toolName, description: data.description });
-    } catch (err) {
-      setRewriteError(err instanceof Error ? err.message : 'Rewrite failed.');
-    } finally {
-      setRewriting(false);
-    }
-  }
 
   return (
     <div className={`group relative bg-gray-900 border rounded-2xl overflow-hidden transition-all duration-200 ${
@@ -84,11 +51,8 @@ export default function ToolCard({ card, sessionToken, dispatch }: Props) {
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            {/* Quality badge */}
-            <span className={`hidden sm:flex items-center gap-1.5 text-xs text-gray-400 ring-1 ${quality.ring} bg-gray-800 px-2.5 py-1 rounded-full`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${quality.dot}`}></span>
-              {quality.label}
-            </span>
+            {/* Quality dot */}
+            <span className={`hidden sm:block w-2 h-2 rounded-full ${quality.dot}`} />
 
             {/* Toggle */}
             <button
@@ -139,8 +103,8 @@ export default function ToolCard({ card, sessionToken, dispatch }: Props) {
           </div>
         )}
 
-        {/* Footer: LLM preview + AI rewrite */}
-        <div className="flex items-center justify-between gap-2 pt-3 border-t border-gray-800">
+        {/* Footer: LLM preview */}
+        <div className="pt-3 border-t border-gray-800">
           <button
             onClick={() => setShowPreview((v) => !v)}
             className="text-xs text-gray-600 hover:text-gray-400 transition-colors flex items-center gap-1"
@@ -148,28 +112,6 @@ export default function ToolCard({ card, sessionToken, dispatch }: Props) {
             <span>{showPreview ? '▲' : '▼'}</span>
             LLM preview
           </button>
-
-          <div className="flex items-center gap-2">
-            {rewriteError && (
-              <span className="text-xs text-red-400 max-w-[200px] truncate" title={rewriteError}>
-                {rewriteError}
-              </span>
-            )}
-            <button
-              onClick={handleRewrite}
-              disabled={rewriting || !card.enabled || !sessionToken}
-              className="inline-flex items-center gap-1.5 text-xs font-medium bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 px-3 py-1.5 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {rewriting ? (
-                <>
-                  <span className="w-3 h-3 border border-indigo-400/40 border-t-indigo-400 rounded-full animate-spin"></span>
-                  Rewriting…
-                </>
-              ) : (
-                <>✨ AI Rewrite</>
-              )}
-            </button>
-          </div>
         </div>
 
         {/* LLM preview panel */}

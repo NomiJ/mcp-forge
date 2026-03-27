@@ -7,11 +7,10 @@ import ToolCard from './ToolCard';
 
 interface Props {
   toolCards: ToolCardType[];
-  sessionToken: string | null;
   dispatch: Dispatch<AppAction>;
 }
 
-export default function ToolCardGrid({ toolCards, sessionToken, dispatch }: Props) {
+export default function ToolCardGrid({ toolCards, dispatch }: Props) {
   const enabledCount = toolCards.filter((c) => c.enabled).length;
   const total = toolCards.length;
 
@@ -55,7 +54,6 @@ export default function ToolCardGrid({ toolCards, sessionToken, dispatch }: Prop
           <ToolCard
             key={card.id}
             card={card}
-            sessionToken={sessionToken}
             dispatch={dispatch}
           />
         ))}

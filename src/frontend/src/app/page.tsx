@@ -19,7 +19,6 @@ export default function Home() {
         <>
           <ToolCardGrid
             toolCards={state.toolCards}
-            sessionToken={state.sessionToken}
             dispatch={dispatch}
           />
           <DownloadBar
