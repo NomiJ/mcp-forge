@@ -50,7 +50,10 @@ export default function SpecInputPage({ dispatch }: Props) {
 
       const parseBody: Record<string, string> =
         mode === 'file'
-          ? { specContent: fileContent }
+          ? {
+              specContent: fileContent,
+              specFormat: fileName.endsWith('.json') ? 'json' : 'yaml',
+            }
           : { specUrl: resolvedSpecUrl };
 
       const parseRes = await fetch(`${API_URL}/api/v1/parse`, {
