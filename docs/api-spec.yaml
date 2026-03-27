@@ -1,0 +1,525 @@
+openapi: 3.1.0
+info:
+  title: MCPForge API
+  version: 0.1.0
+  description: >
+    Internal API contract between the MCPForge Next.js frontend and FastAPI backend.
+    All endpoints are stateless. No authentication is required from the frontend
+    except for passing the session token issued at parse time.
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+  - url: https://api.mcpforge.dev
+    description: Production
+
+paths:
+  /api/v1/discover:
+    post:
+      operationId: discover_spec
+      summary: Auto-discover a spec URL from a base server URL
+      description: >
+        Probes well-known spec paths under the provided base URL in parallel
+        (2-second timeout per probe). Returns the first path that responds with
+        HTTP 200 and a content type of application/json or text/yaml.
+        Probed paths: /openapi.json, /openapi.yaml, /swagger.json, /swagger.yaml,
+        /api-docs, /api-docs.json, /swagger/v1/swagger.json, /docs/openapi.json.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiscoverRequest'
+            example:
+              baseUrl: "https://api.example.com"
+      responses:
+        '200':
+          description: Spec URL found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscoverResponse'
+              example:
+                specUrl: "https://api.example.com/openapi.json"
+        '404':
+          description: No spec found at any standard path
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "No spec found at standard paths"
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/parse:
+    post:
+      operationId: parse_spec
+      summary: Parse an OpenAPI or Swagger spec into tool cards
+      description: >
+        Accepts either a spec URL (fetched by the backend) or raw spec content
+        from a file upload. Parses and normalizes the spec into an array of
+        ToolCard objects. Runs the quality scorer on each card before returning.
+        Issues a session token for use with subsequent /rewrite calls.
+        Supports OpenAPI 3.x and Swagger 2.x in JSON or YAML format.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParseRequest'
+            examples:
+              from_url:
+                summary: Parse from spec URL
+                value:
+                  specUrl: "https://api.example.com/openapi.json"
+              from_file:
+                summary: Parse from uploaded file content
+                value:
+                  specContent: "openapi: 3.1.0\ninfo:\n  title: Example\n..."
+                  specFormat: "yaml"
+      responses:
+        '200':
+          description: Spec parsed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParseResponse'
+        '400':
+          description: Spec could not be fetched, parsed, or validated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                fetch_failed:
+                  value:
+                    error: "Could not fetch spec from URL"
+                invalid_spec:
+                  value:
+                    error: "Spec validation failed: missing required field 'info'"
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/rewrite:
+    post:
+      operationId: rewrite_card
+      summary: AI-rewrite a tool card's name and description
+      description: >
+        Sends the tool card to Claude Haiku (claude-haiku-4-5) and returns an
+        improved tool name (snake_case verb-noun) and a 1–2 sentence plain-English
+        description suitable for LLM consumption. Requires the session token issued
+        by /parse. Maximum 10 calls per session token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RewriteRequest'
+            example:
+              sessionToken: "sess_abc123"
+              toolCard:
+                id: "3f2a1b"
+                enabled: true
+                toolName: "post_v2_usr_upd"
+                description: ""
+                method: "POST"
+                path: "/v2/usr/upd"
+                parameters: []
+                requestBody: null
+                auth: null
+                qualityScore: "red"
+                llmPreview: ""
+      responses:
+        '200':
+          description: Rewrite successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RewriteResponse'
+              example:
+                toolName: "update_user"
+                description: "Updates an existing user's profile information. Accepts user ID and the fields to be changed."
+        '400':
+          description: Invalid or missing session token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Invalid session token"
+        '429':
+          description: Session rewrite limit reached (max 10 per session)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Rewrite limit reached for this session"
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '502':
+          description: Upstream Claude API error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "AI rewrite service unavailable"
+
+  /api/v1/generate:
+    post:
+      operationId: generate_code
+      summary: Generate a runnable MCP server Python file
+      description: >
+        Accepts the full array of (possibly customized) ToolCard objects and
+        metadata, renders the FastMCP Jinja2 template, syntax-checks the output,
+        and returns a downloadable .py file. Only enabled cards are included.
+        If syntax validation fails, returns 500 with a structured error rather
+        than silently returning broken code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateRequest'
+            example:
+              metadata:
+                title: "Petstore API"
+                version: "1.0.0"
+                baseUrl: "https://petstore.example.com"
+              options:
+                framework: "fastmcp"
+              toolCards:
+                - id: "abc123"
+                  enabled: true
+                  toolName: "list_pets"
+                  description: "Returns a paginated list of all pets in the store."
+                  method: "GET"
+                  path: "/pets"
+                  parameters:
+                    - name: "limit"
+                      in: "query"
+                      required: false
+                      type: "integer"
+                      description: "Maximum number of results to return"
+                  requestBody: null
+                  auth:
+                    type: "apiKey"
+                    location: "header"
+                    name: "X-API-Key"
+                  qualityScore: "green"
+                  llmPreview: "list_pets(limit?: integer) — Returns a paginated list of all pets in the store."
+      responses:
+        '200':
+          description: Generated Python file
+          content:
+            application/x-python:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              example: 'attachment; filename="mcp_server.py"'
+        '400':
+          description: No enabled tool cards provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "No enabled tool cards to generate"
+        '500':
+          description: Generated code failed syntax validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateErrorResponse'
+              example:
+                error: "Generated code failed syntax check"
+                detail: "SyntaxError: invalid syntax at line 42"
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+components:
+  schemas:
+
+    # --- Shared domain models ---
+
+    Parameter:
+      type: object
+      required: [name, in, required, type, description]
+      properties:
+        name:
+          type: string
+          description: Parameter name as it appears in the API call
+          example: "limit"
+        in:
+          type: string
+          enum: [path, query, header, cookie]
+          description: Location of the parameter in the HTTP request
+          example: "query"
+        required:
+          type: boolean
+          example: false
+        type:
+          type: string
+          description: JSON Schema primitive type
+          example: "integer"
+        description:
+          type: string
+          example: "Maximum number of results to return"
+
+    RequestBody:
+      type: object
+      required: [required, contentType, schema]
+      properties:
+        required:
+          type: boolean
+        contentType:
+          type: string
+          example: "application/json"
+        schema:
+          type: object
+          description: JSON Schema object describing the request body
+          additionalProperties: true
+
+    AuthScheme:
+      type: object
+      required: [type, location, name]
+      properties:
+        type:
+          type: string
+          enum: [apiKey, bearer, basic]
+          example: "apiKey"
+        location:
+          type: string
+          enum: [header, query, cookie]
+          example: "header"
+        name:
+          type: string
+          description: Header or query parameter name carrying the credential
+          example: "X-API-Key"
+
+    QualityScore:
+      type: string
+      enum: [green, yellow, red]
+      description: >
+        green  = meaningful verb-noun name + description >= 15 words.
+        yellow = description present but < 15 words, or generic tool name.
+        red    = no description, description < 5 words, or raw path-derived name.
+
+    ToolCard:
+      type: object
+      required: [id, enabled, toolName, description, method, path, parameters, requestBody, auth, qualityScore, llmPreview]
+      properties:
+        id:
+          type: string
+          description: UUID assigned at parse time
+          example: "3f2a1b4c-8e9d-4a2f-b1c3-d5e6f7a8b9c0"
+        enabled:
+          type: boolean
+          description: Whether this endpoint will be included in generated code
+          default: true
+        toolName:
+          type: string
+          description: Editable tool name (snake_case verb-noun)
+          example: "list_pets"
+        description:
+          type: string
+          description: Editable plain-English description for LLM consumption
+          example: "Returns a paginated list of all pets in the store."
+        method:
+          type: string
+          enum: [GET, POST, PUT, DELETE, PATCH]
+          example: "GET"
+        path:
+          type: string
+          description: Original endpoint path from the spec
+          example: "/pets"
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/Parameter'
+        requestBody:
+          oneOf:
+            - $ref: '#/components/schemas/RequestBody'
+            - type: 'null'
+        auth:
+          oneOf:
+            - $ref: '#/components/schemas/AuthScheme'
+            - type: 'null'
+        qualityScore:
+          $ref: '#/components/schemas/QualityScore'
+        llmPreview:
+          type: string
+          description: Computed plain-English preview of what an LLM sees when calling this tool
+          example: "list_pets(limit?: integer) — Returns a paginated list of all pets in the store."
+
+    SpecMetadata:
+      type: object
+      required: [title, version, baseUrl]
+      properties:
+        title:
+          type: string
+          example: "Petstore API"
+        version:
+          type: string
+          example: "1.0.0"
+        baseUrl:
+          type: string
+          example: "https://petstore.example.com"
+
+    # --- Request bodies ---
+
+    DiscoverRequest:
+      type: object
+      required: [baseUrl]
+      properties:
+        baseUrl:
+          type: string
+          format: uri
+          example: "https://api.example.com"
+
+    ParseRequest:
+      type: object
+      description: Provide either specUrl or specContent+specFormat — not both.
+      properties:
+        specUrl:
+          type: string
+          format: uri
+          description: Direct URL to the OpenAPI or Swagger spec
+          example: "https://api.example.com/openapi.json"
+        specContent:
+          type: string
+          description: Raw spec content (from file upload)
+        specFormat:
+          type: string
+          enum: [json, yaml]
+          description: Required when specContent is provided
+
+    RewriteRequest:
+      type: object
+      required: [sessionToken, toolCard]
+      properties:
+        sessionToken:
+          type: string
+          description: Session token issued by /parse
+          example: "sess_abc123"
+        toolCard:
+          $ref: '#/components/schemas/ToolCard'
+
+    GenerateOptions:
+      type: object
+      properties:
+        framework:
+          type: string
+          enum: [fastmcp]
+          default: "fastmcp"
+          description: Target MCP server framework (FastMCP only in MVP)
+
+    GenerateRequest:
+      type: object
+      required: [toolCards, metadata]
+      properties:
+        toolCards:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolCard'
+          description: Full array of tool cards including disabled ones (generator filters by enabled)
+          minItems: 1
+        metadata:
+          $ref: '#/components/schemas/SpecMetadata'
+        options:
+          $ref: '#/components/schemas/GenerateOptions'
+
+    # --- Response bodies ---
+
+    DiscoverResponse:
+      type: object
+      required: [specUrl]
+      properties:
+        specUrl:
+          type: string
+          format: uri
+          example: "https://api.example.com/openapi.json"
+
+    ParseResponse:
+      type: object
+      required: [metadata, toolCards, sessionToken]
+      properties:
+        metadata:
+          $ref: '#/components/schemas/SpecMetadata'
+        toolCards:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolCard'
+        sessionToken:
+          type: string
+          description: Opaque token scoping AI rewrite calls (max 10 per session)
+          example: "sess_abc123"
+
+    RewriteResponse:
+      type: object
+      required: [toolName, description]
+      properties:
+        toolName:
+          type: string
+          description: Improved snake_case verb-noun tool name
+          example: "update_user"
+        description:
+          type: string
+          description: Improved 1–2 sentence plain-English description
+          example: "Updates an existing user's profile information. Accepts user ID and the fields to be changed."
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: "No spec found at standard paths"
+
+    GenerateErrorResponse:
+      type: object
+      required: [error, detail]
+      properties:
+        error:
+          type: string
+          example: "Generated code failed syntax check"
+        detail:
+          type: string
+          description: Python exception message from the syntax check
+          example: "SyntaxError: invalid syntax at line 42"
+
+    ValidationErrorDetail:
+      type: object
+      required: [loc, msg, type]
+      properties:
+        loc:
+          type: array
+          items:
+            type: string
+        msg:
+          type: string
+        type:
+          type: string
+
+    ValidationErrorResponse:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationErrorDetail'
+
+  responses:
+    ValidationError:
+      description: Request body failed Pydantic validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'

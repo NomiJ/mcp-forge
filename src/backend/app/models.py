@@ -3,6 +3,9 @@ from typing import Optional, List, Literal
 import uuid
 
 
+_base = {"populate_by_name": True, "serialize_by_alias": True}
+
+
 class Parameter(BaseModel):
     name: str
     location: Literal["path", "query", "header", "cookie"] = Field(alias="in")
@@ -10,7 +13,7 @@ class Parameter(BaseModel):
     type: str
     description: str
 
-    model_config = {"populate_by_name": True}
+    model_config = _base
 
 
 class RequestBody(BaseModel):
@@ -18,7 +21,7 @@ class RequestBody(BaseModel):
     content_type: str
     schema_: dict = Field(alias="schema", default_factory=dict)
 
-    model_config = {"populate_by_name": True}
+    model_config = _base
 
 
 class AuthScheme(BaseModel):
@@ -40,7 +43,7 @@ class ToolCard(BaseModel):
     quality_score: Literal["green", "yellow", "red"] = Field(alias="qualityScore", default="red")
     llm_preview: str = Field(alias="llmPreview", default="")
 
-    model_config = {"populate_by_name": True}
+    model_config = _base
 
 
 class SpecMetadata(BaseModel):
@@ -48,7 +51,7 @@ class SpecMetadata(BaseModel):
     version: str
     base_url: str = Field(alias="baseUrl")
 
-    model_config = {"populate_by_name": True}
+    model_config = _base
 
 
 # --- Request / Response models ---
@@ -56,13 +59,13 @@ class SpecMetadata(BaseModel):
 class DiscoverRequest(BaseModel):
     base_url: str = Field(alias="baseUrl")
 
-    model_config = {"populate_by_name": True}
+    model_config = _base
 
 
 class DiscoverResponse(BaseModel):
     spec_url: str = Field(alias="specUrl")
 
-    model_config = {"populate_by_name": True}
+    model_config = _base
 
 
 class ParseRequest(BaseModel):
@@ -70,7 +73,7 @@ class ParseRequest(BaseModel):
     spec_content: Optional[str] = Field(alias="specContent", default=None)
     spec_format: Optional[Literal["json", "yaml"]] = Field(alias="specFormat", default=None)
 
-    model_config = {"populate_by_name": True}
+    model_config = _base
 
 
 class ParseResponse(BaseModel):
@@ -78,21 +81,21 @@ class ParseResponse(BaseModel):
     tool_cards: List[ToolCard] = Field(alias="toolCards")
     session_token: str = Field(alias="sessionToken")
 
-    model_config = {"populate_by_name": True}
+    model_config = _base
 
 
 class RewriteRequest(BaseModel):
     tool_card: ToolCard = Field(alias="toolCard")
     session_token: str = Field(alias="sessionToken")
 
-    model_config = {"populate_by_name": True}
+    model_config = _base
 
 
 class RewriteResponse(BaseModel):
     tool_name: str = Field(alias="toolName")
     description: str
 
-    model_config = {"populate_by_name": True}
+    model_config = _base
 
 
 class GenerateOptions(BaseModel):
@@ -104,4 +107,4 @@ class GenerateRequest(BaseModel):
     metadata: SpecMetadata
     options: GenerateOptions = Field(default_factory=GenerateOptions)
 
-    model_config = {"populate_by_name": True}
+    model_config = _base
