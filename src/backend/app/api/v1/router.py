@@ -9,15 +9,20 @@ from app.models import (
     RewriteRequest, RewriteResponse,
     GenerateRequest,
 )
-from app.modules import spec_parser, quality_scorer, ai_rewrite, code_generator
+from app.modules import spec_parser, quality_scorer, ai_rewrite, code_generator, auto_discovery
 
 router = APIRouter(prefix="/api/v1")
 
 
 @router.post("/discover", response_model=DiscoverResponse)
 async def discover_spec(request: DiscoverRequest) -> DiscoverResponse:
-    # TODO: delegate to auto_discovery module
-    raise HTTPException(status_code=501, detail="Not implemented")
+    spec_url = await auto_discovery.discover(request.base_url)
+    if spec_url is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No OpenAPI/Swagger spec found at well-known paths under the provided URL.",
+        )
+    return DiscoverResponse(spec_url=spec_url)
 
 
 @router.post("/parse", response_model=ParseResponse)
