@@ -3,3 +3,10 @@ __pycache__/
 .next/
 .env
 .python-version
+next-env.d.ts
+.DS_Store
+*.log
+postcss.config.js
+tailwind.config.js
+tailwind.config.ts
+pnpm-lock.yaml
