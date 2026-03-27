@@ -9,7 +9,7 @@ from app.models import (
     RewriteRequest, RewriteResponse,
     GenerateRequest,
 )
-from app.modules import spec_parser, quality_scorer
+from app.modules import spec_parser, quality_scorer, ai_rewrite, code_generator
 
 router = APIRouter(prefix="/api/v1")
 
@@ -73,11 +73,36 @@ async def parse_spec_endpoint(request: ParseRequest) -> ParseResponse:
 
 @router.post("/rewrite", response_model=RewriteResponse)
 async def rewrite_card(request: RewriteRequest) -> RewriteResponse:
-    # TODO: validate session token rate limit, delegate to ai_rewrite module
-    raise HTTPException(status_code=501, detail="Not implemented")
+    if not sessions.consume(request.session_token):
+        raise HTTPException(
+            status_code=429,
+            detail="Rewrite limit reached or invalid session token.",
+        )
+    try:
+        tool_name, description = await ai_rewrite.rewrite(
+            tool_name=request.current_tool_name,
+            description=request.current_description,
+            method=request.method,
+            path=request.path,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"AI rewrite failed: {exc}") from exc
+
+    return RewriteResponse(tool_name=tool_name, description=description)
 
 
 @router.post("/generate")
 async def generate_code(request: GenerateRequest) -> Response:
-    # TODO: delegate to code_generator module, return .py file download
-    raise HTTPException(status_code=501, detail="Not implemented")
+    try:
+        source = code_generator.generate(request.tool_cards, request.metadata)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    safe_title = code_generator._safe_title(request.metadata.title)
+    filename = f"{safe_title}_mcp_server.py"
+
+    return Response(
+        content=source,
+        media_type="text/x-python",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

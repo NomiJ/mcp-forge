@@ -85,8 +85,12 @@ class ParseResponse(BaseModel):
 
 
 class RewriteRequest(BaseModel):
-    tool_card: ToolCard = Field(alias="toolCard")
     session_token: str = Field(alias="sessionToken")
+    tool_card_id: str = Field(alias="toolCardId")
+    current_tool_name: str = Field(alias="currentToolName")
+    current_description: str = Field(alias="currentDescription")
+    method: str
+    path: str
 
     model_config = _base
 

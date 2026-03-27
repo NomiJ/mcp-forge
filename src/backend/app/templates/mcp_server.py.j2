@@ -4,7 +4,11 @@
 #
 # Install dependencies:
 #   pip install fastmcp httpx
+#
+# Run:
+#   python {{ safe_title }}_mcp_server.py
 
+import os
 import httpx
 from fastmcp import FastMCP
 
@@ -13,23 +17,85 @@ mcp = FastMCP("{{ metadata.title }}")
 BASE_URL = "{{ metadata.base_url }}"
 
 {% if auth %}
-# Authentication
-# TODO: template auth setup block
+# --- Authentication ---
+{% if auth.type == "apiKey" %}
+_API_KEY = os.environ.get("API_KEY", "")
+
+def _get_headers() -> dict:
+    return { "{{ auth.name }}": _API_KEY }
+
+{% elif auth.type == "bearer" %}
+_API_TOKEN = os.environ.get("API_TOKEN", "")
+
+def _get_headers() -> dict:
+    return { "Authorization": f"Bearer {_API_TOKEN}" }
+
+{% elif auth.type == "basic" %}
+_API_USER = os.environ.get("API_USER", "")
+_API_PASS = os.environ.get("API_PASS", "")
+
+def _get_auth() -> tuple:
+    return (_API_USER, _API_PASS)
+
+{% endif %}
+{% else %}
+def _get_headers() -> dict:
+    return {}
+
 {% endif %}
 
+# --- Tools ---
 {% for card in tool_cards %}
-{% if card.enabled %}
 @mcp.tool()
 def {{ card.tool_name }}(
-    {%- for param in card.parameters %}
-    {{ param.name }}: {{ param.type }}{% if not param.required %} = None{% endif %},
+    {%- set path_params = card.parameters | selectattr("location", "equalto", "path") | list %}
+    {%- set query_params = card.parameters | selectattr("location", "equalto", "query") | list %}
+    {%- for param in path_params %}
+    {{ param.name }}: {{ param.type | python_type }},
     {%- endfor %}
+    {%- for param in query_params %}
+    {{ param.name }}: {{ param.type | python_type }}{% if not param.required %} = None{% endif %},
+    {%- endfor %}
+    {%- if card.request_body %}
+    body: dict{% if not card.request_body.required %} = None{% endif %},
+    {%- endif %}
 ) -> dict:
     """{{ card.description }}"""
-    # TODO: template HTTP call block
-    raise NotImplementedError
+    {%- set path_params = card.parameters | selectattr("location", "equalto", "path") | list %}
+    {%- set query_params = card.parameters | selectattr("location", "equalto", "query") | list %}
+    url = BASE_URL + "{{ card.path }}"{% if path_params %}.format(
+        {%- for p in path_params %}{{ p.name }}={{ p.name }}{% if not loop.last %}, {% endif %}{%- endfor %}
+    ){% endif %}
 
-{% endif %}
+    _params = {
+        {%- for p in query_params %}
+        {% if not p.required %}"{{ p.name }}": {{ p.name }},{% else %}"{{ p.name }}": {{ p.name }},{% endif %}
+        {%- endfor %}
+    }
+    _params = {k: v for k, v in _params.items() if v is not None}
+
+    {% if auth and auth.type == "basic" %}
+    response = httpx.{{ card.method | lower }}(
+        url,
+        params=_params or None,
+        {%- if card.request_body %}
+        json=body,
+        {%- endif %}
+        auth=_get_auth(),
+    )
+    {% else %}
+    response = httpx.{{ card.method | lower }}(
+        url,
+        params=_params or None,
+        {%- if card.request_body %}
+        json=body,
+        {%- endif %}
+        headers=_get_headers(),
+    )
+    {% endif %}
+    response.raise_for_status()
+    return response.json()
+
 {% endfor %}
 
 if __name__ == "__main__":
