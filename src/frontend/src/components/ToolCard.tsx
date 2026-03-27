@@ -12,26 +12,25 @@ interface Props {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
-const qualityStyles: Record<QualityScore, { badge: string; border: string }> = {
-  green:  { badge: 'bg-green-500/20 text-green-400',  border: 'border-green-500/30' },
-  yellow: { badge: 'bg-yellow-500/20 text-yellow-400', border: 'border-yellow-500/30' },
-  red:    { badge: 'bg-red-500/20 text-red-400',       border: 'border-red-500/30' },
+const qualityConfig: Record<QualityScore, { label: string; dot: string; ring: string }> = {
+  green:  { label: 'Good',    dot: 'bg-green-400',  ring: 'ring-green-500/20' },
+  yellow: { label: 'Fair',    dot: 'bg-yellow-400', ring: 'ring-yellow-500/20' },
+  red:    { label: 'Improve', dot: 'bg-red-400',    ring: 'ring-red-500/20' },
 };
 
-const methodColors: Record<string, string> = {
-  GET:    'bg-blue-500/20 text-blue-400',
-  POST:   'bg-green-500/20 text-green-400',
-  PUT:    'bg-yellow-500/20 text-yellow-400',
-  PATCH:  'bg-orange-500/20 text-orange-400',
-  DELETE: 'bg-red-500/20 text-red-400',
+const methodStyle: Record<string, string> = {
+  GET:    'bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30',
+  POST:   'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30',
+  PUT:    'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30',
+  PATCH:  'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30',
+  DELETE: 'bg-red-500/15 text-red-400 ring-1 ring-red-500/30',
 };
 
 export default function ToolCard({ card, sessionToken, dispatch }: Props) {
   const [rewriting, setRewriting] = useState(false);
   const [rewriteError, setRewriteError] = useState('');
   const [showPreview, setShowPreview] = useState(false);
-
-  const styles = qualityStyles[card.qualityScore];
+  const quality = qualityConfig[card.qualityScore];
 
   async function handleRewrite() {
     setRewriteError('');
@@ -63,86 +62,123 @@ export default function ToolCard({ card, sessionToken, dispatch }: Props) {
   }
 
   return (
-    <div className={`bg-gray-900 border rounded-xl p-5 flex flex-col gap-4 ${styles.border} ${!card.enabled ? 'opacity-50' : ''}`}>
-      {/* Header row */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded ${methodColors[card.method] ?? 'bg-gray-700 text-gray-300'}`}>
-            {card.method}
-          </span>
-          <span className="text-xs font-mono text-gray-500 truncate">{card.path}</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${styles.badge}`}>
-            {card.qualityScore}
-          </span>
-        </div>
+    <div className={`group relative bg-gray-900 border rounded-2xl overflow-hidden transition-all duration-200 ${
+      card.enabled
+        ? 'border-gray-800 hover:border-gray-700'
+        : 'border-gray-800/50 opacity-50'
+    }`}>
+      {/* Left accent bar by quality */}
+      <div className={`absolute left-0 top-0 bottom-0 w-0.5 ${
+        card.qualityScore === 'green' ? 'bg-green-500' :
+        card.qualityScore === 'yellow' ? 'bg-yellow-500' : 'bg-red-500'
+      }`} />
 
-        {/* Toggle */}
-        <button
-          onClick={() => dispatch({ type: 'TOGGLE_CARD', id: card.id })}
-          className={`shrink-0 w-10 h-5 rounded-full transition-colors ${card.enabled ? 'bg-indigo-600' : 'bg-gray-700'}`}
-          aria-label={card.enabled ? 'Disable tool' : 'Enable tool'}
-        >
-          <span className={`block w-4 h-4 bg-white rounded-full mx-0.5 transition-transform ${card.enabled ? 'translate-x-5' : 'translate-x-0'}`} />
-        </button>
-      </div>
-
-      {/* Editable tool name */}
-      <input
-        type="text"
-        value={card.toolName}
-        onChange={(e) => dispatch({ type: 'UPDATE_TOOL_NAME', id: card.id, toolName: e.target.value })}
-        className="bg-transparent border-b border-gray-700 focus:border-indigo-500 outline-none text-sm font-semibold text-white py-0.5 w-full"
-        disabled={!card.enabled}
-      />
-
-      {/* Editable description */}
-      <textarea
-        value={card.description}
-        onChange={(e) => dispatch({ type: 'UPDATE_DESCRIPTION', id: card.id, description: e.target.value })}
-        rows={2}
-        className="bg-transparent border border-gray-800 focus:border-indigo-500 outline-none text-sm text-gray-300 rounded-lg p-2 w-full resize-none"
-        disabled={!card.enabled}
-      />
-
-      {/* Parameters */}
-      {card.parameters.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {card.parameters.map((p) => (
-            <span key={p.name} className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded font-mono">
-              {p.name}
-              {p.required && <span className="text-red-400 ml-0.5">*</span>}
-              <span className="text-gray-600 ml-1">{p.type}</span>
+      <div className="p-5 pl-6">
+        {/* Top row: method + path + quality + toggle */}
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`shrink-0 text-xs font-mono font-semibold px-2.5 py-1 rounded-lg ${methodStyle[card.method] ?? 'bg-gray-700 text-gray-300'}`}>
+              {card.method}
             </span>
-          ))}
+            <span className="text-xs font-mono text-gray-500 truncate">{card.path}</span>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Quality badge */}
+            <span className={`hidden sm:flex items-center gap-1.5 text-xs text-gray-400 ring-1 ${quality.ring} bg-gray-800 px-2.5 py-1 rounded-full`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${quality.dot}`}></span>
+              {quality.label}
+            </span>
+
+            {/* Toggle */}
+            <button
+              onClick={() => dispatch({ type: 'TOGGLE_CARD', id: card.id })}
+              aria-label={card.enabled ? 'Disable' : 'Enable'}
+              className={`relative w-9 h-5 rounded-full transition-colors duration-200 focus:outline-none ${
+                card.enabled ? 'bg-indigo-600' : 'bg-gray-700'
+              }`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
+                card.enabled ? 'translate-x-4' : 'translate-x-0.5'
+              }`} />
+            </button>
+          </div>
         </div>
-      )}
 
-      {/* LLM preview + AI rewrite */}
-      <div className="flex items-center justify-between gap-2">
-        <button
-          onClick={() => setShowPreview((v) => !v)}
-          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-        >
-          {showPreview ? 'Hide' : 'Show'} LLM preview
-        </button>
+        {/* Tool name */}
+        <input
+          type="text"
+          value={card.toolName}
+          onChange={(e) => dispatch({ type: 'UPDATE_TOOL_NAME', id: card.id, toolName: e.target.value })}
+          disabled={!card.enabled}
+          className="w-full bg-transparent text-sm font-semibold text-white font-mono placeholder-gray-600 border-b border-transparent hover:border-gray-700 focus:border-indigo-500 focus:outline-none py-0.5 mb-3 transition-colors disabled:cursor-not-allowed"
+        />
 
-        <div className="flex items-center gap-2">
-          {rewriteError && <span className="text-xs text-red-400">{rewriteError}</span>}
+        {/* Description */}
+        <textarea
+          value={card.description}
+          onChange={(e) => dispatch({ type: 'UPDATE_DESCRIPTION', id: card.id, description: e.target.value })}
+          disabled={!card.enabled}
+          rows={2}
+          className="w-full bg-gray-800/50 border border-gray-700/50 hover:border-gray-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 focus:outline-none rounded-xl px-3 py-2 text-xs text-gray-400 resize-none transition-all disabled:cursor-not-allowed mb-3"
+        />
+
+        {/* Parameters */}
+        {card.parameters.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {card.parameters.map((p) => (
+              <span
+                key={p.name}
+                className="inline-flex items-center gap-1 text-xs bg-gray-800 border border-gray-700/60 text-gray-400 px-2 py-0.5 rounded-lg font-mono"
+              >
+                {p.required && <span className="text-red-400 text-xs">*</span>}
+                <span className="text-gray-300">{p.name}</span>
+                <span className="text-gray-600">:{p.type}</span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Footer: LLM preview + AI rewrite */}
+        <div className="flex items-center justify-between gap-2 pt-3 border-t border-gray-800">
           <button
-            onClick={handleRewrite}
-            disabled={rewriting || !card.enabled || !sessionToken}
-            className="text-xs bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white px-3 py-1 rounded-lg transition-colors"
+            onClick={() => setShowPreview((v) => !v)}
+            className="text-xs text-gray-600 hover:text-gray-400 transition-colors flex items-center gap-1"
           >
-            {rewriting ? 'Rewriting…' : 'AI Rewrite'}
+            <span>{showPreview ? '▲' : '▼'}</span>
+            LLM preview
           </button>
-        </div>
-      </div>
 
-      {showPreview && (
-        <pre className="bg-gray-950 border border-gray-800 rounded-lg p-3 text-xs text-gray-400 whitespace-pre-wrap font-mono">
-          {card.llmPreview}
-        </pre>
-      )}
+          <div className="flex items-center gap-2">
+            {rewriteError && (
+              <span className="text-xs text-red-400 max-w-[200px] truncate" title={rewriteError}>
+                {rewriteError}
+              </span>
+            )}
+            <button
+              onClick={handleRewrite}
+              disabled={rewriting || !card.enabled || !sessionToken}
+              className="inline-flex items-center gap-1.5 text-xs font-medium bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 px-3 py-1.5 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {rewriting ? (
+                <>
+                  <span className="w-3 h-3 border border-indigo-400/40 border-t-indigo-400 rounded-full animate-spin"></span>
+                  Rewriting…
+                </>
+              ) : (
+                <>✨ AI Rewrite</>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* LLM preview panel */}
+        {showPreview && (
+          <pre className="mt-3 bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-gray-500 whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto">
+            {card.llmPreview}
+          </pre>
+        )}
+      </div>
     </div>
   );
 }

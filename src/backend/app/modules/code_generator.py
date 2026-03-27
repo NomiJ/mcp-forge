@@ -38,6 +38,11 @@ def _python_type(openapi_type: str) -> str:
     return _PYTHON_TYPE_MAP.get(openapi_type.lower(), "str")
 
 
+def _join_format_args(params: list) -> str:
+    """['userId', 'orgId'] -> 'userId=userId, orgId=orgId' for .format() calls."""
+    return ", ".join(f"{p.name}={p.name}" for p in params)
+
+
 def _safe_title(title: str) -> str:
     """Convert API title to a safe filename prefix."""
     return re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
@@ -59,6 +64,7 @@ def generate(tool_cards: list[ToolCard], metadata: SpecMetadata) -> str:
         keep_trailing_newline=True,
     )
     env.filters["python_type"] = _python_type
+    env.filters["join_format_args"] = _join_format_args
 
     template = env.get_template("mcp_server.py.j2")
     source = template.render(

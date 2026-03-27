@@ -15,7 +15,7 @@ export default function Home() {
         <SpecInputPage dispatch={dispatch} />
       )}
 
-      {(state.step === 'review' || state.step === 'download') && state.metadata && (
+      {state.step !== 'input' && state.metadata && (
         <>
           <ToolCardGrid
             toolCards={state.toolCards}

@@ -22,13 +22,13 @@ BASE_URL = "{{ metadata.base_url }}"
 _API_KEY = os.environ.get("API_KEY", "")
 
 def _get_headers() -> dict:
-    return { "{{ auth.name }}": _API_KEY }
+    return {"{{ auth.name }}": _API_KEY}
 
 {% elif auth.type == "bearer" %}
 _API_TOKEN = os.environ.get("API_TOKEN", "")
 
 def _get_headers() -> dict:
-    return { "Authorization": f"Bearer {_API_TOKEN}" }
+    return {"Authorization": "Bearer " + _API_TOKEN}
 
 {% elif auth.type == "basic" %}
 _API_USER = os.environ.get("API_USER", "")
@@ -46,57 +46,53 @@ def _get_headers() -> dict:
 
 # --- Tools ---
 {% for card in tool_cards %}
+{% set path_params = card.parameters | selectattr("location", "equalto", "path") | list %}
+{% set query_params = card.parameters | selectattr("location", "equalto", "query") | list %}
 @mcp.tool()
 def {{ card.tool_name }}(
-    {%- set path_params = card.parameters | selectattr("location", "equalto", "path") | list %}
-    {%- set query_params = card.parameters | selectattr("location", "equalto", "query") | list %}
-    {%- for param in path_params %}
-    {{ param.name }}: {{ param.type | python_type }},
-    {%- endfor %}
-    {%- for param in query_params %}
-    {{ param.name }}: {{ param.type | python_type }}{% if not param.required %} = None{% endif %},
-    {%- endfor %}
-    {%- if card.request_body %}
+{% for p in path_params %}
+    {{ p.name }}: {{ p.type | python_type }},
+{% endfor %}
+{% for p in query_params %}
+    {{ p.name }}: {{ p.type | python_type }}{% if not p.required %} = None{% endif %},
+{% endfor %}
+{% if card.request_body %}
     body: dict{% if not card.request_body.required %} = None{% endif %},
-    {%- endif %}
+{% endif %}
 ) -> dict:
     """{{ card.description }}"""
-    {%- set path_params = card.parameters | selectattr("location", "equalto", "path") | list %}
-    {%- set query_params = card.parameters | selectattr("location", "equalto", "query") | list %}
-    url = BASE_URL + "{{ card.path }}"{% if path_params %}.format(
-        {%- for p in path_params %}{{ p.name }}={{ p.name }}{% if not loop.last %}, {% endif %}{%- endfor %}
-    ){% endif %}
-
-    _params = {
-        {%- for p in query_params %}
-        {% if not p.required %}"{{ p.name }}": {{ p.name }},{% else %}"{{ p.name }}": {{ p.name }},{% endif %}
-        {%- endfor %}
-    }
-    _params = {k: v for k, v in _params.items() if v is not None}
-
-    {% if auth and auth.type == "basic" %}
+{% if path_params %}
+    _url = (BASE_URL + "{{ card.path }}").format({{ path_params | join_format_args }})
+{% else %}
+    _url = BASE_URL + "{{ card.path }}"
+{% endif %}
+    _params: dict = {}
+{% for p in query_params %}
+    if {{ p.name }} is not None:
+        _params["{{ p.name }}"] = {{ p.name }}
+{% endfor %}
+{% if auth and auth.type == "basic" %}
     response = httpx.{{ card.method | lower }}(
-        url,
+        _url,
         params=_params or None,
-        {%- if card.request_body %}
+{% if card.request_body %}
         json=body,
-        {%- endif %}
+{% endif %}
         auth=_get_auth(),
     )
-    {% else %}
+{% else %}
     response = httpx.{{ card.method | lower }}(
-        url,
+        _url,
         params=_params or None,
-        {%- if card.request_body %}
+{% if card.request_body %}
         json=body,
-        {%- endif %}
+{% endif %}
         headers=_get_headers(),
     )
-    {% endif %}
+{% endif %}
     response.raise_for_status()
     return response.json()
 
 {% endfor %}
-
 if __name__ == "__main__":
     mcp.run()
